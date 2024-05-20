@@ -8,11 +8,11 @@
 run tiles server
 
 ```shell
-uvicorn py.server:app --reload
+python server.py
 ```
 
 make mosaic
 
 ```shell
-python py/mosaic.py
+python mosaic.py
 ```

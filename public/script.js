@@ -11,13 +11,16 @@ document.addEventListener('DOMContentLoaded', () => {
   const map = L.map(mapDivId, {
     crs: L.CRS.Simple,
     zoom: 0,
-    center: [0,0]
+    center: [0,0],
+    minZoom: -2,
+    maxZoom: 60,
+    // zoomDelta: .1,
+    // zoomSnap: 0,
+    // scrollWheelZoom: false
   })
 
   L.tileLayer('/tiles/{filename}_{z}_{x}_{y}', {
     filename: '_',
-    minZoom: -2,
-    maxZoom: 60,
     attribution: null
   }).addTo(map)
 

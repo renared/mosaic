@@ -11,7 +11,7 @@ def load_patches(path):
     for dirname, _, files in os.walk(path, topdown=False):
         for filename in files:
             patches.append(np.array(pilimage.open(os.path.join(dirname, filename))))
-    patches = patches
+    patches = np.array(patches)
     # (N, x, y, c)
     return patches
 
@@ -21,7 +21,7 @@ def resize_patches_to_blocksize(patches, blocksize):
     for patch in patches:
         im = pilimage.fromarray(patch)
         resized_patches.append(np.array(im.resize((blocksize, blocksize))))
-    return resized_patches
+    return np.array(resized_patches)
     # (n, 1)
 
 
@@ -48,7 +48,7 @@ def match_blocks_patches_indexes(blocks_mean_colors, patches_mean_colors):
                 patches_mean_colors, blocks_mean_colors[r, c]
             )
     return indexes
-    # (rows, cols) ???
+    # (rows, cols)
 
 
 def load_inputimage(path):
@@ -101,51 +101,51 @@ def make_mosaic_image(matching_patch_indexes, patches, blocksize):
     return image
 
 
-patches_path = "Lab-1/input"
-# inputimage_path = "Lab-1/input/0.jpg"
-inputimage_path = "/mnt/c/Users/pl/Pictures/IMG_4547.jpg"
-# inputimage_path = "/mnt/c/Users/pl/Pictures/oeil2300.jpg"
-blocksize = 50
+if __name__ == "__main__":
 
+    patches_path = "Lab-1/input"
+    # inputimage_path = "Lab-1/input/0.jpg"
+    inputimage_path = "/mnt/c/Users/pl/Pictures/IMG_4547.jpg"
+    # inputimage_path = "/mnt/c/Users/pl/Pictures/oeil2300.jpg"
+    blocksize = 50
 
-## patches
-print("loading patches...")
-t0 = time.perf_counter()
+    ## patches
+    print("loading patches...")
+    t0 = time.perf_counter()
 
-patches = load_patches(patches_path)
+    patches = load_patches(patches_path)
 
-t1 = time.perf_counter()
-print(f"{len(patches)} loaded in {t1-t0:.3f}s")
+    t1 = time.perf_counter()
+    print(f"{len(patches)} loaded in {t1-t0:.3f}s")
 
-print(f"resizing patches to {blocksize}px...")
-t0 = time.perf_counter()
+    print(f"resizing patches to {blocksize}px...")
+    t0 = time.perf_counter()
 
-patches = resize_patches_to_blocksize(patches, blocksize)
+    patches = resize_patches_to_blocksize(patches, blocksize)
 
-t1 = time.perf_counter()
-print(f"{len(patches)} resized in {t1-t0:.3f}s")
+    t1 = time.perf_counter()
+    print(f"{len(patches)} resized in {t1-t0:.3f}s")
 
+    print("computing patches mean colors")
+    patches_mean_colors = compute_patches_meancolors(patches)
 
-print("computing patches mean colors")
-patches_mean_colors = compute_patches_meancolors(patches)
+    ## image
 
-## image
+    inputimage = load_inputimage(inputimage_path)
 
-inputimage = load_inputimage(inputimage_path)
+    height, width, _ = inputimage.shape
+    rows = height // blocksize
+    cols = width // blocksize
 
-height, width, _ = inputimage.shape
-rows = height // blocksize
-cols = width // blocksize
+    blocks = slice_blocks(inputimage, blocksize)
+    blocks_mean_colors = compute_blocks_meancolors(blocks)
+    pixelimage = make_pixel_image(rows, cols, blocks_mean_colors, blocksize)
 
-blocks = slice_blocks(inputimage, blocksize)
-blocks_mean_colors = compute_blocks_meancolors(blocks)
-pixelimage = make_pixel_image(rows, cols, blocks_mean_colors, blocksize)
+    matching_patch_indexes = match_blocks_patches_indexes(
+        blocks_mean_colors, patches_mean_colors
+    )
 
-matching_patch_indexes = match_blocks_patches_indexes(
-    blocks_mean_colors, patches_mean_colors
-)
+    mosaicimage = make_mosaic_image(matching_patch_indexes, patches, blocksize)
 
-mosaicimage = make_mosaic_image(matching_patch_indexes, patches, blocksize)
-
-write_image(pixelimage, "output/pixel.jpg")
-write_image(mosaicimage, "output/mosaic.jpg")
+    write_image(pixelimage, "output/pixel.jpg")
+    write_image(mosaicimage, "output/mosaic.jpg")
