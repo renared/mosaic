@@ -1,23 +1,29 @@
 import cv2
 from glob import glob
-import os
 import numpy as np
 import pynndescent
-from tqdm import tqdm
 from numba import njit, objmode, types
+import pickle
+import os
+
+def hashmoi(bytes) -> str:
+    import hashlib
+    return hashlib.sha256(bytes, usedforsecurity=False).hexdigest()[:8]
 
 num_features = 4
 
-def read_image(fn:str):
+def read_image(fn:str, size=None):
     im = cv2.imread(fn, cv2.IMREAD_COLOR)
-    im = cv2.cvtColor(im, cv2.COLOR_BGR2RGB)
+    if size is not None:
+        im = cv2.resize(im, size[::-1])
+    im = cv2.cvtColor(im, cv2.COLOR_BGR2LAB)
     return im
 
 @njit
 def make_feature_vector(im:np.ndarray):
     assert len(im.shape) == 3
     mean_rgb = np.array([np.mean(im[:, :, k]) for k in range(im.shape[2])])
-    var = 0#np.mean(np.abs(im - mean_rgb[None, None]))
+    var = np.mean(np.abs(im - mean_rgb[None, None]))
     return np.concatenate((mean_rgb, np.array([var])))
 
 @njit
@@ -33,39 +39,48 @@ def extract_feature_image(im:np.ndarray, kernel_size:tuple[int, int], stride:tup
             out[i, j] = make_feature_vector(im[i * sh : i * sh + kh, j * sw : j * sw + kw])
     return out
 
-def mosaic_from_index_image(idxim:np.ndarray, block_size:tuple[int, int], data_filenames:list[str]):
+@njit
+def mosaic_from_index_image(idxim:np.ndarray, block_size:tuple[int, int], thumbnails:np.ndarray):
     hnum, wnum = idxim.shape
     hb, wb = block_size
     ho, wo = hb * hnum, wb * wnum
-    out = np.zeros((ho, wo, 3), dtype=np.float32)
+    out = np.zeros((ho, wo, 3), dtype=thumbnails.dtype)
     for i in range(hnum):
         for j in range(wnum):
-            thum = cv2.imread(data_filenames[idxim[i, j]])
-            thum = cv2.cvtColor(thum, cv2.COLOR_BGR2RGB)
-            thum = cv2.resize(thum, block_size[::-1])
-            out[i * hb : i * hb + hb, j * wb : j * wb + wb] = thum
+            out[i * hb : i * hb + hb, j * wb : j * wb + wb] = thumbnails[idxim[i, j]]
     return out
 
-# construct dataset
+# construct or load dataset
 data_filenames = glob("./input/*.jpg")
-data_features = np.stack([ make_feature_vector(read_image(fn)) for fn in data_filenames ])
-print(f"{data_features.shape=}")
-
-# make knn index
-index = pynndescent.NNDescent(data_features, verbose=True, n_jobs=-1, n_neighbors=1)
+hashstr = hashmoi(str(sorted(data_filenames)).encode())
+if os.path.exists(index_fn := "./.index/"+hashstr+".pkl"):
+    print(f"Loading {index_fn}...")
+    with open(index_fn, "rb") as fp:
+        index = pickle.load(fp)
+else:
+    print(f"Creating {index_fn}...")
+    data_features = np.stack([ make_feature_vector(read_image(fn)) for fn in data_filenames ])
+    print(f"{data_features.shape=}")
+    # make knn index
+    index = pynndescent.NNDescent(data_features, verbose=True, n_jobs=-1, n_neighbors=1)
+    with open(index_fn, "wb") as fp:
+        pickle.dump(index, fp)
 
 # load test image
-im0 = read_image(r"D:\home\Downloads\20240507_155839.jpg")
+im0 = read_image(r"D:\backupTODO\DATA4\Dossier personnel\Desktop\scorch_flame02b (c) 01.png")
 print("Extracting feature image...")
-f0 = extract_feature_image(im0, (16, 16), (16, 16))
+f0 = extract_feature_image(im0, (16, 16), (8, 8))
 
 # print("Querying...")
 indices, distances = index.query(f0.reshape(-1, f0.shape[2]), k=1)
 idxim = indices[:, 0].reshape(*f0.shape[:2])
 # idxim = np.random.randint(0, len(data_filenames), size=f0.shape[:2])
 
+print("Loading thumbnails")
+thumbs = np.stack([ read_image(fn, size=(16, 16)) for fn in data_filenames ])
+
 print("Making mosaic...")
-outim = mosaic_from_index_image(idxim, (16, 16), data_filenames)
+outim = mosaic_from_index_image(idxim, (16, 16), thumbs)
 
 print("Saving to out.png")
-cv2.imwrite("out.png", cv2.cvtColor(outim, cv2.COLOR_RGB2BGR))
+cv2.imwrite("out.png", cv2.cvtColor(outim, cv2.COLOR_LAB2BGR))
